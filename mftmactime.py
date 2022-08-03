@@ -39,13 +39,16 @@ def join_mft_datetime_attributes(old_entry, value_to_add):
 def save_mft_to_file(mft, output_path):
     with open(output_path, "w") as f: 
         for entry in mft:
+            fflag = ""
             ftype = "r/rrwxrwxrwx" 
             if "FILE_ATTRIBUTE_IS_DIRECTORY" in entry["ftype"]:
                 ftype = "d/drwxrwxrwx"
             elif "(empty)" in entry["ftype"]:
                 ftype = "-/-rwxrwxrwx"
             formatted_date = entry["date"].strftime("%a %b %d %Y %H:%M:%S")
-            f.write("{},{},{},{},{},{},{},{}\n".format(formatted_date, entry["file_size"], entry["date_flags"], ftype, 0, 0, entry["inode"], entry["full_path"]))
+            if "ALLOCATED" not in entry["flags"]:
+                fflag = " (deleted)"
+            f.write("{},{},{},{},{},{},{},{}{}\n".format(formatted_date, entry["file_size"], entry["date_flags"], ftype, 0, 0, entry["inode"], entry["full_path"], fflag))
 
 
 def mft_parser(mftfile, mftout, drive_letter):
