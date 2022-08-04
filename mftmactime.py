@@ -54,17 +54,17 @@ def save_mft_to_file(mft, output_path):
 def mft_parser(mftfile, mftout, drive_letter):
     mft = list()
     parser = PyMftParser(mftfile)
-    for entry_or_error in parser.entries():
-        if isinstance(entry_or_error, RuntimeError):
+    for file_record in parser.entries():
+        if isinstance(file_record, RuntimeError):
             continue
 
         ftype = ""
         mft_entry = dict()
-        for attribute_or_error in entry_or_error.attributes():
-            if isinstance(attribute_or_error, RuntimeError):
+        for attribute_record in file_record.attributes():
+            if isinstance(attribute_record, RuntimeError):
                 continue
 
-            resident_content = attribute_or_error.attribute_content
+            resident_content = attribute_record.attribute_content
             if resident_content:
                 if isinstance(resident_content, PyMftAttributeX10):
                     if resident_content.modified not in mft_entry:
@@ -87,10 +87,10 @@ def mft_parser(mftfile, mftout, drive_letter):
 
         for entry in mft_entry:
             mft.append({
-                "file_size": entry_or_error.file_size,
-                "full_path": "{}:/{}".format(drive_letter, entry_or_error.full_path),
-                "inode": entry_or_error.entry_id,
-                "flags": entry_or_error.flags,
+                "file_size": file_record.file_size,
+                "full_path": "{}:/{}".format(drive_letter, file_record.full_path),
+                "inode": file_record.entry_id,
+                "flags": file_record.flags,
                 "date": entry,
                 "date_flags": mft_entry[entry],
                 "ftype": ftype
