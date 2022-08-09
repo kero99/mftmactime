@@ -9,7 +9,7 @@ pip install mft argparse tqdm
 usage: mftmactime.py [-h] -f FILE -o OUTPUT [-m DRIVE] [-n] [-tz TIMEZONE]
                         
 # Example
-mftmactime.py -f /mnt/comp001/\\$MFT -o comp001_fstl.csv
+mftmactime.py -f /mnt/comp001/\\$MFT -o comp001_fstl.csv -n
 
 ![image](https://user-images.githubusercontent.com/143736/183637088-0089c8c4-ef23-46e1-bbd5-8321422108cb.png)
 
