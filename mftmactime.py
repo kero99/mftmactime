@@ -25,10 +25,13 @@
 #
 
 import argparse
-from mft import PyMftParser, PyMftAttributeX10, PyMftAttributeX30
+import pytz
+import os
+
+from mft import PyMftParser, PyMftAttributeX10, PyMftAttributeX30, PyMftAttributeX80
 from operator import itemgetter
 from tqdm import tqdm
-import pytz
+
 
 
 def join_mft_datetime_attributes(old_entry, value_to_add):
@@ -40,7 +43,7 @@ def join_mft_datetime_attributes(old_entry, value_to_add):
 
 def save_mft_to_file(mft, output_path, timezone):
     with open(output_path, "w", encoding="utf-8") as f:
-        f.write("Date,Size,Type,Mode,UID,GID,Meta,File Name\n")
+        f.write("Date,Size,Type,Mode,UID,GID,Meta,File Name,Resident\n")
         for entry in mft:
             fflag = ""
             ftype = "r/rrwxrwxrwx" #TODO
@@ -59,9 +62,22 @@ def save_mft_to_file(mft, output_path, timezone):
                 fflag = "(deleted)"
             f.write("{},{},{},{},{},{},{},{} {}\n".format(formatted_date, entry["file_size"], entry["date_flags"], ftype, 0, 0, entry["inode"], entry["full_path"], fflag))
 
+def dump_resident_file(resident_path, full_path, data):
+    filename = "{}/{}".format(resident_path, full_path)
+    os.makedirs(os.path.dirname(filename), exist_ok=True)
+    with open(filename, "wb") as f:
+        f.write(data)
 
-def mft_parser(mftfile, mftout, drive_letter, file_name, timezone):
+def mft_parser(mftfile, mftout, drive_letter, file_name, timezone, resident_path):
     mft = list()
+    totalres = 0
+    totaldel = 0
+
+    if resident_path:
+        report_file = "{}/resident_summary.txt".format(resident_path)
+        with open(report_file, "w") as r:
+            r.write("STATUS, FILE PATH")
+
     parser = PyMftParser(mftfile)
     for file_record in tqdm(parser.entries(), desc = "  + PARSING MFT:"):
         if isinstance(file_record, RuntimeError):
@@ -69,53 +85,64 @@ def mft_parser(mftfile, mftout, drive_letter, file_name, timezone):
 
         ftypex10 = ""
         ftypex30 = ""
+        resident = False
+        rdeleted = "ALLOCATED"
         mft_entryx10 = dict()
         mft_entryx30 = dict()
         for attribute_record in file_record.attributes():
             if isinstance(attribute_record, RuntimeError):
                 continue
 
-            resident_content = attribute_record.attribute_content
-            if resident_content:
-                if isinstance(resident_content, PyMftAttributeX10):
-                    if resident_content.modified not in mft_entryx10:
-                        mft_entryx10[resident_content.modified] = "m..."
+            resident = attribute_record.is_resident
+
+            attribute_data = attribute_record.attribute_content
+            if attribute_data:
+                if isinstance(attribute_data, PyMftAttributeX10):
+                    if attribute_data.modified not in mft_entryx10:
+                        mft_entryx10[attribute_data.modified] = "m..."
                     else:
-                        mft_entryx10[resident_content.modified] = join_mft_datetime_attributes(mft_entryx10[resident_content.modified], 'm')
-                    if resident_content.accessed not in mft_entryx10:
-                        mft_entryx10[resident_content.accessed] = ".a.."
+                        mft_entryx10[attribute_data.modified] = join_mft_datetime_attributes(mft_entryx10[attribute_data.modified], 'm')
+                    if attribute_data.accessed not in mft_entryx10:
+                        mft_entryx10[attribute_data.accessed] = ".a.."
                     else:
-                        mft_entryx10[resident_content.accessed] = join_mft_datetime_attributes(mft_entryx10[resident_content.accessed], 'a')
-                    if resident_content.mft_modified not in mft_entryx10:
-                        mft_entryx10[resident_content.mft_modified] = "..c."
+                        mft_entryx10[attribute_data.accessed] = join_mft_datetime_attributes(mft_entryx10[attribute_data.accessed], 'a')
+                    if attribute_data.mft_modified not in mft_entryx10:
+                        mft_entryx10[attribute_data.mft_modified] = "..c."
                     else:
-                        mft_entryx10[resident_content.mft_modified] = join_mft_datetime_attributes(mft_entryx10[resident_content.mft_modified], 'c')
-                    if resident_content.created not in mft_entryx10:
-                        mft_entryx10[resident_content.created] = "...b"
+                        mft_entryx10[attribute_data.mft_modified] = join_mft_datetime_attributes(mft_entryx10[attribute_data.mft_modified], 'c')
+                    if attribute_data.created not in mft_entryx10:
+                        mft_entryx10[attribute_data.created] = "...b"
                     else:
-                        mft_entryx10[resident_content.created] = join_mft_datetime_attributes(mft_entryx10[resident_content.created], 'b')
-                    ftypex10 = resident_content.file_flags
+                        mft_entryx10[attribute_data.created] = join_mft_datetime_attributes(mft_entryx10[attribute_data.created], 'b')
+                    ftypex10 = attribute_data.file_flags
                 if file_name:
-                    if isinstance(resident_content, PyMftAttributeX30):
-                        if resident_content.modified not in mft_entryx30:
-                            mft_entryx30[resident_content.modified] = "m..."
+                    if isinstance(attribute_data, PyMftAttributeX30):
+                        if attribute_data.modified not in mft_entryx30:
+                            mft_entryx30[attribute_data.modified] = "m..."
                         else:
-                            mft_entryx30[resident_content.modified] = join_mft_datetime_attributes(mft_entryx30[resident_content.modified], 'm')
-                        if resident_content.accessed not in mft_entryx30:
-                            mft_entryx30[resident_content.accessed] = ".a.."
+                            mft_entryx30[attribute_data.modified] = join_mft_datetime_attributes(mft_entryx30[attribute_data.modified], 'm')
+                        if attribute_data.accessed not in mft_entryx30:
+                            mft_entryx30[attribute_data.accessed] = ".a.."
                         else:
-                            mft_entryx30[resident_content.accessed] = join_mft_datetime_attributes(mft_entryx30[resident_content.accessed], 'a')
-                        if resident_content.mft_modified not in mft_entryx30:
-                            mft_entryx30[resident_content.mft_modified] = "..c."
+                            mft_entryx30[attribute_data.accessed] = join_mft_datetime_attributes(mft_entryx30[attribute_data.accessed], 'a')
+                        if attribute_data.mft_modified not in mft_entryx30:
+                            mft_entryx30[attribute_data.mft_modified] = "..c."
                         else:
-                            mft_entryx30[resident_content.mft_modified] = join_mft_datetime_attributes(mft_entryx30[resident_content.mft_modified], 'c')
-                        if resident_content.created not in mft_entryx30:
-                            mft_entryx30[resident_content.created] = "...b"
+                            mft_entryx30[attribute_data.mft_modified] = join_mft_datetime_attributes(mft_entryx30[attribute_data.mft_modified], 'c')
+                        if attribute_data.created not in mft_entryx30:
+                            mft_entryx30[attribute_data.created] = "...b"
                         else:
-                            mft_entryx30[resident_content.created] = join_mft_datetime_attributes(mft_entryx30[resident_content.created], 'b')
-                        ftypex30 = resident_content.flags
-
-
+                            mft_entryx30[attribute_data.created] = join_mft_datetime_attributes(mft_entryx30[attribute_data.created], 'b')
+                        ftypex30 = attribute_data.flags
+                if resident and resident_path:
+                    if isinstance(attribute_data, PyMftAttributeX80):
+                        dump_resident_file(resident_path, file_record.full_path, attribute_data.data)
+                        totalres += 1
+                        if "ALLOCATED" not in file_record.flags:
+                            rdeleted = "DELETED"
+                            totaldel += 1
+                        with open(report_file, "a") as r:
+                            r.write("{},{}\n".format(rdeleted, file_record.full_path))
 
         for entry in mft_entryx10:
             mft.append({
@@ -137,11 +164,15 @@ def mft_parser(mftfile, mftout, drive_letter, file_name, timezone):
                     "date": entry,
                     "date_flags": mft_entryx30[entry],
                     "ftype": ftypex30
-            })     
-    
+            })
 
     mft_ordered_by_date = sorted(mft, key=itemgetter("date"))
     save_mft_to_file(mft_ordered_by_date, mftout, timezone)
+
+    if resident_path:
+        print ("  + TOTAL RESIDENT RECOVERED: {}".format(totalres))
+        print ("  + TOTAL DELETED RESIDENT RECOVERED: {}".format(totaldel))
+        print ("  + RECOVERY REPORT FILE: {}".format(report_file))
 
 
 def get_args():
@@ -174,6 +205,11 @@ def get_args():
                            action='store',
                            help='The timezone of the collected MFT (UTC Default): Ex: Europe/Madrid')
 
+    argparser.add_argument('-r', '--resident',
+                           required=False,
+                           action='store',
+                           help='Output path for dump MFT resident data')
+
     args = argparser.parse_args()
 
     return args
@@ -188,11 +224,12 @@ def main():
     drive_letter = args.drive
     file_name = args.filenameattr
     timezone = args.timezone
+    resident_path = args.resident
 
     if timezone and timezone not in pytz.all_timezones:
         raise ValueError('Invalid timezone string!')
 
-    mft_parser(mftfile, mftout, drive_letter, file_name, timezone)
+    mft_parser(mftfile, mftout, drive_letter, file_name, timezone, resident_path)
 
 
 # *** MAIN LOOP ***
