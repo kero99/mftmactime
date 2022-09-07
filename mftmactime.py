@@ -76,7 +76,7 @@ def mft_parser(mftfile, mftout, drive_letter, file_name, timezone, resident_path
     if resident_path:
         report_file = "{}/resident_summary.txt".format(resident_path)
         with open(report_file, "w") as r:
-            r.write("STATUS, FILE PATH")
+            r.write("STATUS, FILE PATH\n")
 
     parser = PyMftParser(mftfile)
     for file_record in tqdm(parser.entries(), desc = "  + PARSING MFT:"):
