@@ -16,4 +16,4 @@ mftmactime.py -f /mnt/comp001/\\$MFT -o comp001_fstl.csv -n
 #Example with dump resident files
 mftmactime -f MFT -o test.csv -n -r recovery_output
 
-![screenshot](https://user-images.githubusercontent.com/143736/188840823-ca1c8f75-3fdb-41dd-b7a7-923630df67fc.png)
+![Screenshot at 2022-09-07 11-29-48](https://user-images.githubusercontent.com/143736/188844076-9eefc9b7-9801-4c23-a0df-0ef794b92dc1.png)
