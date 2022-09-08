@@ -75,6 +75,7 @@ def mft_parser(mftfile, mftout, drive_letter, file_name, timezone, resident_path
 
     if resident_path:
         report_file = "{}/resident_summary.txt".format(resident_path)
+        os.makedirs(os.path.dirname(report_file), exist_ok=True)
         with open(report_file, "w") as r:
             r.write("STATUS, FILE PATH\n")
 
