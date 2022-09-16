@@ -3,6 +3,7 @@
 # mftmactime.py
 #
 # (c) Authors: Miguel Quero & Javier Marin (Based in mft work of Omer BenAmram)
+# (c) USN Authors: Adam Witt / Corey Forman <github.com/digitalsleuth>
 # e-mail: motrilwireless@gmail.com
 #
 # ***************************************************************
@@ -27,12 +28,188 @@
 import argparse
 import pytz
 import os
+import struct
+import collections
 
 from mft import PyMftParser, PyMftAttributeX10, PyMftAttributeX30, PyMftAttributeX80
 from operator import itemgetter
 from tqdm import tqdm
+from datetime import datetime
+
+utc=pytz.UTC
+
+########################### USN SECTION ################################
+
+reasons = collections.OrderedDict()
+reasons[0x1] = 'DATA_OVERWRITE'
+reasons[0x2] = 'DATA_EXTEND'
+reasons[0x4] = 'DATA_TRUNCATION'
+reasons[0x10] = 'NAMED_DATA_OVERWRITE'
+reasons[0x20] = 'NAMED_DATA_EXTEND'
+reasons[0x40] = 'NAMED_DATA_TRUNCATION'
+reasons[0x100] = 'FILE_CREATE'
+reasons[0x200] = 'FILE_DELETE'
+reasons[0x400] = 'EA_CHANGE'
+reasons[0x800] = 'SECURITY_CHANGE'
+reasons[0x1000] = 'RENAME_OLD_NAME'
+reasons[0x2000] = 'RENAME_NEW_NAME'
+reasons[0x4000] = 'INDEXABLE_CHANGE'
+reasons[0x8000] = 'BASIC_INFO_CHANGE'
+reasons[0x10000] = 'HARD_LINK_CHANGE'
+reasons[0x20000] = 'COMPRESSION_CHANGE'
+reasons[0x40000] = 'ENCRYPTION_CHANGE'
+reasons[0x80000] = 'OBJECT_ID_CHANGE'
+reasons[0x100000] = 'REPARSE_POINT_CHANGE'
+reasons[0x200000] = 'STREAM_CHANGE'
+reasons[0x800000] = 'INTEGRITY_CHANGE'
+reasons[0x00400000] = 'TRANSACTED_CHANGE'
+reasons[0x80000000] = 'CLOSE'
 
 
+attributes = collections.OrderedDict()
+attributes[0x1] = 'READONLY'
+attributes[0x2] = 'HIDDEN'
+attributes[0x4] = 'SYSTEM'
+attributes[0x10] = 'DIRECTORY'
+attributes[0x20] = 'ARCHIVE'
+attributes[0x40] = 'DEVICE'
+attributes[0x80] = 'NORMAL'
+attributes[0x100] = 'TEMPORARY'
+attributes[0x200] = 'SPARSE_FILE'
+attributes[0x400] = 'REPARSE_POINT'
+attributes[0x800] = 'COMPRESSED'
+attributes[0x1000] = 'OFFLINE'
+attributes[0x2000] = 'NOT_CONTENT_INDEXED'
+attributes[0x4000] = 'ENCRYPTED'
+attributes[0x8000] = 'INTEGRITY_STREAM'
+attributes[0x10000] = 'VIRTUAL'
+attributes[0x20000] = 'NO_SCRUB_DATA'
+
+
+sourceInfo = collections.OrderedDict()
+sourceInfo[0x1] = 'DATA_MANAGEMENT'
+sourceInfo[0x2] = 'AUXILIARY_DATA'
+sourceInfo[0x4] = 'REPLICATION_MANAGEMENT'
+sourceInfo[0x8] = 'CLIENT_REPLICATION_MANAGEMENT'
+
+def parseUsn(infile, usn):
+    recordProperties = [
+        'majorVersion',
+        'minorVersion',
+        'fileReferenceNumber',
+        'parentFileReferenceNumber',
+        'usn',
+        'timestamp',
+        'reason',
+        'sourceInfo',
+        'securityId',
+        'fileAttributes',
+        'filenameLength',
+        'filenameOffset'
+    ]
+    recordDict = dict(zip(recordProperties, usn))
+    recordDict['filename'] = filenameHandler(infile, recordDict)
+    recordDict['reason'] = convertAttributes(reasons, recordDict['reason'])
+    recordDict['fileAttributes'] = convertAttributes(
+        attributes, recordDict['fileAttributes'])
+    recordDict['mftSeqNumber'], recordDict['mftEntryNumber'] = convertFileReference(
+        recordDict['fileReferenceNumber'])
+    recordDict['pMftSeqNumber'], recordDict['pMftEntryNumber'] = convertFileReference(
+        recordDict['parentFileReferenceNumber'])
+    reorder = [
+        'filename',
+        'timestamp',
+        'usn',
+        'fileReferenceNumber',
+        'parentFileReferenceNumber',
+        'reason',
+        'fileAttributes',
+        'mftSeqNumber',
+        'mftEntryNumber',
+        'pMftSeqNumber',
+        'pMftEntryNumber',
+        'filenameLength',
+        'filenameOffset',
+        'sourceInfo',
+        'securityId',
+        'majorVersion',
+        'minorVersion'
+    ]
+    recordDict = {key: recordDict[key] for key in reorder}
+    return recordDict
+
+def findFirstRecord(infile):
+    """
+    Returns a pointer to the first USN record found
+    Modified version of Dave Lassalle's 'parseusn.py'
+    https://github.com/sans-dfir/sift-files/blob/master/scripts/parseusn.py
+    """
+    while True:
+        data = infile.read(65536).lstrip(b'\x00')
+        if data:
+            return infile.tell() - len(data)
+
+
+def findNextRecord(infile, journalSize):
+    """
+    There are runs of null bytes between USN records. I'm guessing
+    this is done to ensure that journal records are cluster-aligned on disk.
+    This function reads through these null bytes, returning an offset
+    to the first byte of the the next USN record.
+    """
+    while True:
+        try:
+            recordLength = struct.unpack_from('<I', infile.read(4))[0]
+            if recordLength:
+                infile.seek(-4, 1)
+                return infile.tell() + recordLength
+        except struct.error:
+            if infile.tell() >= journalSize:
+                break
+
+
+def convertFileReference(buf):
+    """
+    Read, store, unpack, and return FileReference
+    """
+    b = memoryview(bytearray(struct.pack("<Q", buf)))
+    seq = struct.unpack_from("<h", b[6:8])[0]
+
+    b = memoryview(bytearray(b[0:6]))
+    byteString = ''
+
+    for i in b[::-1]:
+        byteString += format(i, 'x')
+    entry = int(byteString, 16)
+
+    return seq, entry
+
+
+def filenameHandler(infile, recordDict):
+    """
+    Read and return filename
+    """
+    try:
+        filename = struct.unpack_from('<{}s'.format(
+            recordDict['filenameLength']), infile.read(recordDict['filenameLength']))[0]
+        return filename.decode('utf16')
+    except struct.error:
+        return ''
+
+
+def convertAttributes(attributeType, data):
+    """
+    Identify attributes and return list
+    """
+    attributeList = [attributeType[i] for i in attributeType if i & data]
+    return ' '.join(attributeList)
+
+
+########################### MFT SECTION ################################
+
+def generator():
+    while True:
+      yield
 
 def join_mft_datetime_attributes(old_entry, value_to_add):
     mask = "macb"
@@ -40,16 +217,15 @@ def join_mft_datetime_attributes(old_entry, value_to_add):
     new_entry = old_entry[:value_pos] + value_to_add + old_entry[value_pos+1:]
     return new_entry
 
-
 def save_mft_to_file(mft, output_path, timezone):
     with open(output_path, "w", encoding="utf-8") as f:
         f.write("Date,Size,Type,Mode,UID,GID,Meta,File Name,Resident\n")
         for entry in mft:
             fflag = ""
             ftype = "r/rrwxrwxrwx" #TODO
-            if "FILE_ATTRIBUTE_IS_DIRECTORY" in entry["ftype"]:
+            if "DIRECTORY" in entry["ftype"]:
                 ftype = "d/drwxrwxrwx" #TODO
-            elif "(empty)" in entry["ftype"]:
+            else:
                 ftype = "-/-rwxrwxrwx" #TODO
 
             if timezone:
@@ -58,18 +234,23 @@ def save_mft_to_file(mft, output_path, timezone):
             else:
                 formatted_date = entry["date"].strftime("%a %b %d %Y %H:%M:%S")
 
-            if "ALLOCATED" not in entry["flags"]:
+            if "ALLOCATED" in entry["flags"]:
+                fflag = ""
+            elif "USN" in entry["flags"]:
+                fflag = entry["flags"]
+            else:
                 fflag = "(deleted)"
             f.write("{},{},{},{},{},{},{},{} {}\n".format(formatted_date, entry["file_size"], entry["date_flags"], ftype, 0, 0, entry["inode"], entry["full_path"], fflag))
 
 def dump_resident_file(resident_path, full_path, data):
-    filename = "{}/{}".format(resident_path, full_path)
-    os.makedirs(os.path.dirname(filename), exist_ok=True)
-    with open(filename, "wb") as f:
-        f.write(data)
+        filename = "{}/{}".format(resident_path, full_path)
+        os.makedirs(os.path.dirname(filename), exist_ok=True)
+        with open(filename, "wb") as rf:
+            rf.write(data)
 
-def mft_parser(mftfile, mftout, drive_letter, file_name, timezone, resident_path):
+def mft_parser(mftfile, mftout, drive_letter, file_name, timezone, resident_path, usnfile):
     mft = list()
+    fpath = dict()
     totalres = 0
     totaldel = 0
 
@@ -91,11 +272,11 @@ def mft_parser(mftfile, mftout, drive_letter, file_name, timezone, resident_path
         mft_entryx10 = dict()
         mft_entryx30 = dict()
         for attribute_record in file_record.attributes():
+
             if isinstance(attribute_record, RuntimeError):
                 continue
 
             resident = attribute_record.is_resident
-
             attribute_data = attribute_record.attribute_content
             if attribute_data:
                 if isinstance(attribute_data, PyMftAttributeX10):
@@ -116,6 +297,7 @@ def mft_parser(mftfile, mftout, drive_letter, file_name, timezone, resident_path
                     else:
                         mft_entryx10[attribute_data.created] = join_mft_datetime_attributes(mft_entryx10[attribute_data.created], 'b')
                     ftypex10 = attribute_data.file_flags
+
                 if file_name:
                     if isinstance(attribute_data, PyMftAttributeX30):
                         if attribute_data.modified not in mft_entryx30:
@@ -135,26 +317,34 @@ def mft_parser(mftfile, mftout, drive_letter, file_name, timezone, resident_path
                         else:
                             mft_entryx30[attribute_data.created] = join_mft_datetime_attributes(mft_entryx30[attribute_data.created], 'b')
                         ftypex30 = attribute_data.flags
+
                 if resident and resident_path:
-                    if isinstance(attribute_data, PyMftAttributeX80):
-                        dump_resident_file(resident_path, file_record.full_path, attribute_data.data)
-                        totalres += 1
-                        if "ALLOCATED" not in file_record.flags:
-                            rdeleted = "DELETED"
-                            totaldel += 1
-                        with open(report_file, "a") as r:
-                            r.write("{},{}\n".format(rdeleted, file_record.full_path))
+                    if isinstance(attribute_data, PyMftAttributeX80) and ftypex10:
+                        if file_record.file_size != 0:
+                            dump_resident_file(resident_path, file_record.full_path, attribute_data.data)
+                            totalres += 1
+                            if "ALLOCATED" not in file_record.flags:
+                                rdeleted = "DELETED"
+                                totaldel += 1
+                            with open(report_file, "a") as r:
+                                r.write("{},{}\n".format(rdeleted, file_record.full_path))
 
         for entry in mft_entryx10:
+            thisfullpath = "{}:/{}".format(drive_letter, file_record.full_path)
+            if usnfile:
+                fpath[file_record.entry_id] = thisfullpath
+
             mft.append({
                 "file_size": file_record.file_size,
-                "full_path": "{}:/{}".format(drive_letter, file_record.full_path),
+                "full_path": thisfullpath,
                 "inode": file_record.entry_id,
                 "flags": file_record.flags,
                 "date": entry,
                 "date_flags": mft_entryx10[entry],
                 "ftype": ftypex10
+                
             })
+
         if file_name:
             for entry in mft_entryx30:
                 mft.append({
@@ -167,6 +357,33 @@ def mft_parser(mftfile, mftout, drive_letter, file_name, timezone, resident_path
                     "ftype": ftypex30
             })
 
+    if usnfile:
+        journalSize = os.path.getsize(usnfile)
+        with open(usnfile, 'rb') as i:
+            i.seek(findFirstRecord(i))
+            for _ in tqdm(generator(), desc = "  + PARSING USN:"):
+                try:
+                    nextRecord = findNextRecord(i, journalSize)
+                    recordLength = struct.unpack_from('<I', i.read(4))[0]
+                    recordData = struct.unpack_from('<2H4Q4I2H', i.read(56))
+                    usn = parseUsn(i, recordData)
+                    thisfullpath = fpath.get(usn['mftEntryNumber'], usn['filename'])
+                    thisfilename = os.path.basename(thisfullpath)
+                    if usn['filename'] not in thisfilename:
+                        thisfullpath = usn['filename']
+                    mft.append({
+                        "file_size": "0",
+                        "full_path": thisfullpath,
+                        "inode": usn['mftEntryNumber'],
+                        "flags": "(USN: {})".format(usn['reason']),
+                        "date": utc.localize(datetime.fromtimestamp(float(usn['timestamp']) * 1e-7 - 11644473600)),
+                        "date_flags": "....",
+                        "ftype": usn['fileAttributes']
+                    })
+                    i.seek(nextRecord)
+                except:
+                   break
+    print("  + GENERATING TIMELINE ...")          
     mft_ordered_by_date = sorted(mft, key=itemgetter("date"))
     save_mft_to_file(mft_ordered_by_date, mftout, timezone)
 
@@ -211,6 +428,11 @@ def get_args():
                            action='store',
                            help='Output path for dump MFT resident data')
 
+    argparser.add_argument('-u', '--usn',
+                           required=False,
+                           action='store',
+                           help='USN Journal path')
+
     args = argparser.parse_args()
 
     return args
@@ -226,11 +448,12 @@ def main():
     file_name = args.filenameattr
     timezone = args.timezone
     resident_path = args.resident
+    usnfile = args.usn
 
     if timezone and timezone not in pytz.all_timezones:
         raise ValueError('Invalid timezone string!')
 
-    mft_parser(mftfile, mftout, drive_letter, file_name, timezone, resident_path)
+    mft_parser(mftfile, mftout, drive_letter, file_name, timezone, resident_path, usnfile)
 
 
 # *** MAIN LOOP ***
