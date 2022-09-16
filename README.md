@@ -6,7 +6,7 @@ It uses Omer BenAmram's (https://github.com/omerbenamram/mft) great MFT rust par
 pip install mft argparse tqdm pytz
 
 # Use
-usage: mftmactime.py [-h] -f FILE -o OUTPUT [-m DRIVE] [-n] [-tz TIMEZONE] [-r RESIDENT] 
+usage: mftmactime.py [-h] -f FILE -o OUTPUT [-m DRIVE] [-n] [-tz TIMEZONE] [-r RESIDENT] [-u USN] 
                         
 # Example
 mftmactime.py -f /mnt/comp001/\\$MFT -o comp001_fstl.csv -n
