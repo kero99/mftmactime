@@ -1,6 +1,7 @@
 # Description
 This is an MFT parser that allows direct extraction in filesystem timeline format (mactime).
 It uses Omer BenAmram's (https://github.com/omerbenamram/mft) great MFT rust parsing libraries, which allows a great speed and efficiency in the process.
+Additionally, the integration with the USN Journal parser allows to have in the same timeline the combined MFT and USN data.
 
 # Requirement
 pip install mft argparse tqdm pytz
