@@ -18,3 +18,8 @@ mftmactime.py -f /mnt/comp001/\\$MFT -o comp001_fstl.csv -n
 mftmactime -f MFT -o test.csv -n -r recovery_output
 
 ![Screenshot at 2022-09-07 11-29-48](https://user-images.githubusercontent.com/143736/188844076-9eefc9b7-9801-4c23-a0df-0ef794b92dc1.png)
+
+#Example of inode entries with USN Journal and MFT mixed data
+
+![image](https://user-images.githubusercontent.com/143736/191730418-ba1f5a8d-2ff0-4e88-aa30-236c5169e580.png)
+
