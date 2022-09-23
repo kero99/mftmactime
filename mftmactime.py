@@ -292,10 +292,13 @@ def save_mft_to_file(mft, output_path, timezone):
             f.write("{},{},{},{},{},{},{},{} {}\n".format(formatted_date, entry["file_size"], entry["date_flags"], ftype, 0, 0, entry["inode"], entry["full_path"], fflag))
 
 def dump_resident_file(resident_path, full_path, data):
+    try:
         filename = "{}/{}".format(resident_path, full_path)
         os.makedirs(os.path.dirname(filename), exist_ok=True)
         with open(filename, "wb") as rf:
             rf.write(data)
+    except:
+        return
 
 def mft_parser(mftfile, mftout, drive_letter, file_name, timezone, resident_path, usnfile, offset, dump_path):
     mft = list()
@@ -420,6 +423,7 @@ def mft_parser(mftfile, mftout, drive_letter, file_name, timezone, resident_path
                 print ('  + USN Jornal not found. Skipping')
                 skip = True
             else:
+                print("  + DUMPING USN...")
                 usnfile = inode_seek_and_dump(usnfile, dump_path, offset, usninode, "UsnJrnl") 
 
         if not skip:
