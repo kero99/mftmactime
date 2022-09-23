@@ -24,6 +24,7 @@ mftmactime -f MFT -o test.csv -n -r recovery_output
 ![image](https://user-images.githubusercontent.com/143736/191730418-ba1f5a8d-2ff0-4e88-aa30-236c5169e580.png)
 
 # Example of dump and process from RAW Evidence
+mftmactime -n -f ../evidence/Testing/test-img.dd -u ../evidence/Testing/test-img.dd -o ./filesystem_tln.csv -d dump -r resindents
 
 ![image](https://user-images.githubusercontent.com/143736/191998130-097e69ea-80dc-4684-80ba-d4dfbe861452.png)
 
