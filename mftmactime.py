@@ -76,8 +76,7 @@ def check_file(file, offset):
     if "FILE0" in str(header):
         fl.close()
         return "mft"
-        
-    
+
     fl.seek(offset + 3 , 0)
     header = fl.read(4)
     if "NTFS" in str(header):
@@ -386,7 +385,7 @@ def mft_parser(mftfile, mftout, drive_letter, file_name, timezone, resident_path
             thisfullpath = "{}:/{}".format(drive_letter, file_record.full_path)
             if usnfile:
                 fpath[file_record.entry_id] = thisfullpath
-                if ":/$Extend/$UsnJrnl" in thisfullpath:
+                if ":/$Extend/$UsnJrnl" in thisfullpath and int(file_record.file_size) > BUFF_SIZE :
                     usninode = file_record.entry_id
 
             mft.append({
@@ -560,5 +559,3 @@ def main():
 # *** MAIN LOOP ***
 if __name__ == '__main__':
     main()
-
-
