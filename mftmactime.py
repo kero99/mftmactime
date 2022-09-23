@@ -30,13 +30,62 @@ import pytz
 import os
 import struct
 import collections
+import pytsk3
+import io
 
 from mft import PyMftParser, PyMftAttributeX10, PyMftAttributeX30, PyMftAttributeX80
 from operator import itemgetter
 from tqdm import tqdm
 from datetime import datetime
 
-utc=pytz.UTC
+UTC=pytz.UTC
+BUFF_SIZE = 1024 * 1024
+
+########################### IMG SUPPORT ################################
+
+def inode_seek_and_dump(imgfile, dump_path, offset, inode, filename):
+    img = pytsk3.Img_Info(imgfile)
+    fs = pytsk3.FS_Info(img, offset=offset)
+    f = fs.open_meta(inode = inode)
+
+    filesize = 0
+    thisoffset = 0
+    for i in f:
+        if (i.info.type == pytsk3.TSK_FS_ATTR_TYPE_NTFS_DATA):
+            thissize = i.info.size
+            if thissize > filesize:
+                filesize = thissize
+
+    thisfile = "{}/{}".format(dump_path, filename)
+    os.makedirs(os.path.dirname(thisfile), exist_ok=True)
+    of = open(thisfile,"wb")
+    while thisoffset < filesize:
+        available_to_read = min(BUFF_SIZE, filesize - thisoffset)
+        data = f.read_random(thisoffset, available_to_read,1)
+        if not data: 
+            break
+        thisoffset += len(data)
+        of.write(data)
+    of.close()
+
+    return thisfile
+
+def check_file(file, offset):
+    fl = open(file, 'rb')
+    header = fl.read(5)
+    if "FILE0" in str(header):
+        fl.close()
+        return "mft"
+        
+    
+    fl.seek(offset + 3 , 0)
+    header = fl.read(4)
+    if "NTFS" in str(header):
+        fl.close()
+        return "ntfs"
+
+    fl.close()
+    return False
 
 ########################### USN SECTION ################################
 
@@ -248,11 +297,12 @@ def dump_resident_file(resident_path, full_path, data):
         with open(filename, "wb") as rf:
             rf.write(data)
 
-def mft_parser(mftfile, mftout, drive_letter, file_name, timezone, resident_path, usnfile):
+def mft_parser(mftfile, mftout, drive_letter, file_name, timezone, resident_path, usnfile, offset, dump_path):
     mft = list()
     fpath = dict()
     totalres = 0
     totaldel = 0
+    usninode = None
 
     if resident_path:
         report_file = "{}/resident_summary.txt".format(resident_path)
@@ -333,6 +383,8 @@ def mft_parser(mftfile, mftout, drive_letter, file_name, timezone, resident_path
             thisfullpath = "{}:/{}".format(drive_letter, file_record.full_path)
             if usnfile:
                 fpath[file_record.entry_id] = thisfullpath
+                if ":/$Extend/$UsnJrnl" in thisfullpath:
+                    usninode = file_record.entry_id
 
             mft.append({
                 "file_size": file_record.file_size,
@@ -358,31 +410,46 @@ def mft_parser(mftfile, mftout, drive_letter, file_name, timezone, resident_path
             })
 
     if usnfile:
-        journalSize = os.path.getsize(usnfile)
-        with open(usnfile, 'rb') as i:
-            i.seek(findFirstRecord(i))
-            for _ in tqdm(generator(), desc = "  + PARSING USN:"):
-                try:
-                    nextRecord = findNextRecord(i, journalSize)
-                    recordLength = struct.unpack_from('<I', i.read(4))[0]
-                    recordData = struct.unpack_from('<2H4Q4I2H', i.read(56))
-                    usn = parseUsn(i, recordData)
-                    thisfullpath = fpath.get(usn['mftEntryNumber'], usn['filename'])
-                    thisfilename = os.path.basename(thisfullpath)
-                    if usn['filename'] not in thisfilename:
-                        thisfullpath = usn['filename']
-                    mft.append({
-                        "file_size": "0",
-                        "full_path": thisfullpath,
-                        "inode": usn['mftEntryNumber'],
-                        "flags": "(USN: {})".format(usn['reason']),
-                        "date": utc.localize(datetime.fromtimestamp(float(usn['timestamp']) * 1e-7 - 11644473600)),
-                        "date_flags": "....",
-                        "ftype": usn['fileAttributes']
-                    })
-                    i.seek(nextRecord)
-                except:
-                   break
+        skip = False
+        check = check_file(usnfile, offset)
+        if check == "ntfs":
+            if not dump_path:
+                print ('  + Dump path is required for dump USN Journal. Skipping')
+                skip = True
+            elif not usninode:
+                print ('  + USN Jornal not found. Skipping')
+                skip = True
+            else:
+                usnfile = inode_seek_and_dump(usnfile, dump_path, offset, usninode, "UsnJrnl") 
+
+        if not skip:
+        
+            journalSize = os.path.getsize(usnfile)
+            with open(usnfile, 'rb') as i:
+                i.seek(findFirstRecord(i))
+                for _ in tqdm(generator(), desc = "  + PARSING USN:"):
+                    try:
+                        nextRecord = findNextRecord(i, journalSize)
+                        recordLength = struct.unpack_from('<I', i.read(4))[0]
+                        recordData = struct.unpack_from('<2H4Q4I2H', i.read(56))
+                        usn = parseUsn(i, recordData)
+                        thisfullpath = fpath.get(usn['mftEntryNumber'], usn['filename'])
+                        thisfilename = os.path.basename(thisfullpath)
+                        if usn['filename'] not in thisfilename:
+                            thisfullpath = usn['filename']
+                        mft.append({
+                            "file_size": "0",
+                            "full_path": thisfullpath,
+                            "inode": usn['mftEntryNumber'],
+                            "flags": "(USN: {})".format(usn['reason']),
+                            "date": UTC.localize(datetime.fromtimestamp(float(usn['timestamp']) * 1e-7 - 11644473600)),
+                            "date_flags": "....",
+                            "ftype": usn['fileAttributes']
+                        })
+                        i.seek(nextRecord)
+                    except:
+                        break
+
     print("  + GENERATING TIMELINE ...")          
     mft_ordered_by_date = sorted(mft, key=itemgetter("date"))
     save_mft_to_file(mft_ordered_by_date, mftout, timezone)
@@ -400,7 +467,7 @@ def get_args():
     argparser.add_argument('-f', '--file',
                            required=True,
                            action='store',
-                           help='MFT artifact path')
+                           help='MFT artifact path or RAW Evidente(require --dump-path)')
 
     argparser.add_argument('-o', '--output',
                            required=True,
@@ -431,7 +498,18 @@ def get_args():
     argparser.add_argument('-u', '--usn',
                            required=False,
                            action='store',
-                           help='USN Journal path')
+                           help='USN Journal path or RAW Evidente(require --dump-path)')
+
+    argparser.add_argument('-s', '--offset',
+                           required=False,
+                           action='store',
+                           default=0,
+                           help='Filesystem offset in RAW evidence. Default: 0')
+    
+    argparser.add_argument('-d', '--dump_path',
+                        required=False,
+                        action='store',
+                        help='Dump path to allocate MFT and USN files')
 
     args = argparser.parse_args()
 
@@ -442,18 +520,37 @@ def main():
 
     args = get_args()
 
-    mftfile = args.file
+    inputfile = args.file
+    offset = int(args.offset)
+    dump_path = args.dump_path
+    inputusn = args.usn
+
+    # CHECK MFT INPUT
+    check = check_file(inputfile, offset)
+    if not check:
+        print('+ Input file not supported')
+        return 1
+    elif check == "ntfs":
+        print("- RAW Evidence Detected")
+        if not dump_path:
+            print('+ Dump path is required for RAW Evidence')
+            return 1
+        mftfile = inode_seek_and_dump(inputfile, dump_path, offset, 0, "MFT")
+    else:
+        print("- MFT FILE Detected")
+        mftfile = inputfile
+
+    timezone = args.timezone
+    if timezone and timezone not in pytz.all_timezones:
+        print('+ Invalid timezone string!')
+        return 1
+    
     mftout = args.output
     drive_letter = args.drive
     file_name = args.filenameattr
-    timezone = args.timezone
     resident_path = args.resident
-    usnfile = args.usn
 
-    if timezone and timezone not in pytz.all_timezones:
-        raise ValueError('Invalid timezone string!')
-
-    mft_parser(mftfile, mftout, drive_letter, file_name, timezone, resident_path, usnfile)
+    mft_parser(mftfile, mftout, drive_letter, file_name, timezone, resident_path, inputusn, offset, dump_path)
 
 
 # *** MAIN LOOP ***
