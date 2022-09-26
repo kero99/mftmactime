@@ -1,7 +1,10 @@
 # Description
-This is an MFT and USN parser that allows direct extraction in filesystem timeline format (mactime).
+This is an MFT and USN parser that allows direct extraction in filesystem timeline format (mactime) and optionally dump all resident files in the MFT in their original folder structure.
+
 It uses Omer BenAmram's (https://github.com/omerbenamram/mft) great MFT rust parsing libraries, which allows a great speed and efficiency in the process.
-The integration with the USN Journal parser allows to have in the same timeline the combined MFT and USN data. You can use as input files either individual files derived from a triage or a forensic image in RAW format or a mixture of both modes. In case the input is RAW the artifacts will be dumped in a selected directory.
+The integration with the USN Journal parser allows to have in the same timeline the combined MFT and USN data. 
+
+You can use as input files either individual files derived from a triage or a forensic image in RAW format or a mixture of both modes. In case the input is RAW the artifacts will be dumped in a selected directory.
 
 # Requirement
 pip install mft argparse tqdm pytz pytsk3
