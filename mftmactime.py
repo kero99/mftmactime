@@ -32,6 +32,7 @@ import struct
 import collections
 import pytsk3
 import io
+import platform
 
 from mft import PyMftParser, PyMftAttributeX10, PyMftAttributeX30, PyMftAttributeX80
 from operator import itemgetter
@@ -40,6 +41,7 @@ from datetime import datetime
 
 UTC=pytz.UTC
 BUFF_SIZE = 1024 * 1024
+OS=platform.system()
 
 ########################### IMG SUPPORT ################################
 
@@ -382,10 +384,16 @@ def mft_parser(mftfile, mftout, drive_letter, file_name, timezone, resident_path
                                 r.write("{},{}\n".format(rdeleted, file_record.full_path))
 
         for entry in mft_entryx10:
-            thisfullpath = "{}:/{}".format(drive_letter, file_record.full_path)
+            if OS == "Windows":
+                thisfullpath = "{}:\{}".format(drive_letter, file_record.full_path)
+            else:
+                thisfullpath = "{}:/{}".format(drive_letter, file_record.full_path)
+
             if usnfile:
                 fpath[file_record.entry_id] = thisfullpath
-                if ":/$Extend/$UsnJrnl" in thisfullpath and int(file_record.file_size) > BUFF_SIZE :
+                if OS == "Windows" and ":\$Extend\$UsnJrnl" in thisfullpath and int(file_record.file_size) > BUFF_SIZE :
+                    usninode = file_record.entry_id
+                elif ":/$Extend/$UsnJrnl" in thisfullpath and int(file_record.file_size) > BUFF_SIZE :
                     usninode = file_record.entry_id
 
             mft.append({
