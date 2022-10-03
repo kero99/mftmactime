@@ -304,6 +304,7 @@ def dump_resident_file(resident_path, full_path, data):
 
 def mft_parser(mftfile, mftout, drive_letter, file_name, timezone, resident_path, usnfile, offset, dump_path):
     mft = list()
+    adsext = list()
     fpath = dict()
     totalres = 0
     totaldel = 0
@@ -320,13 +321,14 @@ def mft_parser(mftfile, mftout, drive_letter, file_name, timezone, resident_path
         if isinstance(file_record, RuntimeError):
             continue
 
-        adsext = []
         ftypex10 = ""
         ftypex30 = ""
         resident = False
         rdeleted = "ALLOCATED"
         mft_entryx10 = dict()
         mft_entryx30 = dict()
+        adsext.clear()
+
         for attribute_record in file_record.attributes():
 
             if isinstance(attribute_record, RuntimeError):
@@ -389,12 +391,13 @@ def mft_parser(mftfile, mftout, drive_letter, file_name, timezone, resident_path
                             with open(report_file, "a") as r:
                                 r.write("{},{}\n".format(rdeleted, file_record.full_path))
 
-        for entry in mft_entryx10:
-            if OS == "Windows":
-                thisfullpath = "{}:\{}".format(drive_letter, file_record.full_path)
-            else:
-                thisfullpath = "{}:/{}".format(drive_letter, file_record.full_path)
+        # PATHs Conversions
+        if OS == "Windows":
+            thisfullpath = "{}:\{}".format(drive_letter, file_record.full_path)
+        else:
+            thisfullpath = "{}:/{}".format(drive_letter, file_record.full_path)
 
+        for entry in mft_entryx10:
             if usnfile:
                 fpath[file_record.entry_id] = thisfullpath
                 if OS == "Windows" and ":\$Extend\$UsnJrnl" in thisfullpath and int(file_record.file_size) > BUFF_SIZE :
@@ -412,6 +415,7 @@ def mft_parser(mftfile, mftout, drive_letter, file_name, timezone, resident_path
                 "ftype": ftypex10
                 
             })
+
             # ADS Support
             if adsext:
                 for ads in adsext:
@@ -430,7 +434,7 @@ def mft_parser(mftfile, mftout, drive_letter, file_name, timezone, resident_path
             for entry in mft_entryx30:
                 mft.append({
                     "file_size": file_record.file_size,
-                    "full_path": "{}:/{} ($FILE_NAME)".format(drive_letter, file_record.full_path),
+                    "full_path": "{} ($FILE_NAME)".format(thisfullpath),
                     "inode": file_record.entry_id,
                     "flags": file_record.flags,
                     "date": entry,
