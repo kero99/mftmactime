@@ -269,7 +269,7 @@ def join_mft_datetime_attributes(old_entry, value_to_add):
 
 def save_mft_to_file(mft, output_path, timezone):
     with open(output_path, "w", encoding="utf-8") as f:
-        f.write("Date,Size,Type,Mode,UID,GID,Meta,File Name,Resident\n")
+        f.write("Date,Size,Type,Mode,UID,GID,Meta,File Name\n")
         for entry in mft:
             fflag = ""
             ftype = "r/rrwxrwxrwx" #TODO
@@ -319,6 +319,7 @@ def mft_parser(mftfile, mftout, drive_letter, file_name, timezone, resident_path
         if isinstance(file_record, RuntimeError):
             continue
 
+        adsext = []
         ftypex10 = ""
         ftypex30 = ""
         resident = False
@@ -331,6 +332,10 @@ def mft_parser(mftfile, mftout, drive_letter, file_name, timezone, resident_path
                 continue
 
             resident = attribute_record.is_resident
+
+            if attribute_record.name and attribute_record.type_name == "DATA" and attribute_record.data_size > 0:
+                adsext.append(attribute_record.name)
+
             attribute_data = attribute_record.attribute_content
             if attribute_data:
                 if isinstance(attribute_data, PyMftAttributeX10):
@@ -406,6 +411,19 @@ def mft_parser(mftfile, mftout, drive_letter, file_name, timezone, resident_path
                 "ftype": ftypex10
                 
             })
+            # ADS Support
+            if adsext:
+                for ads in adsext:
+                    thisfulladspath = "{}:{}".format(thisfullpath, ads)
+                    mft.append({
+                        "file_size": file_record.file_size,
+                        "full_path": thisfulladspath,
+                        "inode": file_record.entry_id,
+                        "flags": file_record.flags,
+                        "date": entry,
+                        "date_flags": mft_entryx10[entry],
+                        "ftype": ftypex10
+                    })
 
         if file_name:
             for entry in mft_entryx30:
