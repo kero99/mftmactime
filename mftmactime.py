@@ -42,6 +42,7 @@ from datetime import datetime
 UTC=pytz.UTC
 BUFF_SIZE = 1024 * 1024
 OS=platform.system()
+VERSION="0.6"
 
 ########################### IMG SUPPORT ################################
 
@@ -492,6 +493,10 @@ def mft_parser(mftfile, mftout, drive_letter, file_name, timezone, resident_path
 def get_args():
     argparser = argparse.ArgumentParser(
         description='Utility to create a mactime format filesystem timeline from MFT')
+
+    argparser.add_argument('-V', '--version',
+                            action='version', 
+                            version='%(prog)s {}'.format(VERSION))
 
     argparser.add_argument('-f', '--file',
                            required=True,
