@@ -62,15 +62,16 @@ def inode_seek_and_dump(imgfile, dump_path, offset, inode, filename):
     thisfile = "{}/{}".format(dump_path, filename)
     os.makedirs(os.path.dirname(thisfile), exist_ok=True)
     of = open(thisfile,"wb")
+    pbar = tqdm(total = filesize,  desc = "  + DUMPING {}".format(filename))
     while thisoffset < filesize:
         available_to_read = min(BUFF_SIZE, filesize - thisoffset)
         data = f.read_random(thisoffset, available_to_read,1)
-        if not data: 
+        if not data:
             break
         thisoffset += len(data)
         of.write(data)
+        pbar.update(available_to_read)
     of.close()
-
     return thisfile
 
 def check_file(file, offset):
@@ -304,8 +305,9 @@ def dump_resident_file(resident_path, full_path, data):
 
 def mft_parser(mftfile, mftout, drive_letter, file_name, timezone, resident_path, usnfile, offset, dump_path):
     mft = list()
-    adsext = list()
     fpath = dict()
+    adsres = list()
+    adsnores = dict()
     totalres = 0
     totaldel = 0
     usninode = None
@@ -317,17 +319,24 @@ def mft_parser(mftfile, mftout, drive_letter, file_name, timezone, resident_path
             r.write("STATUS, FILE PATH\n")
 
     parser = PyMftParser(mftfile)
-    for file_record in tqdm(parser.entries(), desc = "  + PARSING MFT:"):
+    for file_record in tqdm(parser.entries(), desc = "  + PARSING MFT"):
         if isinstance(file_record, RuntimeError):
             continue
 
         ftypex10 = ""
         ftypex30 = ""
         resident = False
+        asndate = None
         rdeleted = "ALLOCATED"
         mft_entryx10 = dict()
         mft_entryx30 = dict()
-        adsext.clear()
+        adsres.clear()
+
+        # PATHs Conversions
+        if OS == "Windows":
+            thisfullpath = "{}:\{}".format(drive_letter, file_record.full_path)
+        else:
+            thisfullpath = "{}:/{}".format(drive_letter, file_record.full_path)
 
         for attribute_record in file_record.attributes():
 
@@ -337,7 +346,12 @@ def mft_parser(mftfile, mftout, drive_letter, file_name, timezone, resident_path
             resident = attribute_record.is_resident
 
             if attribute_record.name and attribute_record.type_name == "DATA" and attribute_record.data_size > 0:
-                adsext.append(attribute_record.name)
+                if file_record.base_entry_id > 0 and file_record.file_size > 0:
+                    adsnores[file_record.base_entry_id] = [attribute_record.name, file_record.file_size]
+                elif file_record.base_entry_id > 0 and file_record.base_entry_id not in adsnores:
+                    adsnores[file_record.base_entry_id] = [attribute_record.name, attribute_record.data_size]
+                else:
+                    adsres.append([attribute_record.name, attribute_record.data_size])
 
             attribute_data = attribute_record.attribute_content
             if attribute_data:
@@ -359,6 +373,7 @@ def mft_parser(mftfile, mftout, drive_letter, file_name, timezone, resident_path
                     else:
                         mft_entryx10[attribute_data.created] = join_mft_datetime_attributes(mft_entryx10[attribute_data.created], 'b')
                     ftypex10 = attribute_data.file_flags
+                    asndate = attribute_data.accessed
 
                 if file_name:
                     if isinstance(attribute_data, PyMftAttributeX30):
@@ -391,15 +406,12 @@ def mft_parser(mftfile, mftout, drive_letter, file_name, timezone, resident_path
                             with open(report_file, "a") as r:
                                 r.write("{},{}\n".format(rdeleted, file_record.full_path))
 
-        # PATHs Conversions
-        if OS == "Windows":
-            thisfullpath = "{}:\{}".format(drive_letter, file_record.full_path)
-        else:
-            thisfullpath = "{}:/{}".format(drive_letter, file_record.full_path)
+        # Store inode path reference
+        if asndate:
+            fpath[file_record.entry_id] = [thisfullpath, file_record.file_size, asndate]
 
         for entry in mft_entryx10:
             if usnfile:
-                fpath[file_record.entry_id] = thisfullpath
                 if OS == "Windows" and ":\$Extend\$UsnJrnl" in thisfullpath and int(file_record.file_size) > BUFF_SIZE :
                     usninode = file_record.entry_id
                 elif ":/$Extend/$UsnJrnl" in thisfullpath and int(file_record.file_size) > BUFF_SIZE :
@@ -417,11 +429,11 @@ def mft_parser(mftfile, mftout, drive_letter, file_name, timezone, resident_path
             })
 
             # ADS Support
-            if adsext:
-                for ads in adsext:
-                    thisfulladspath = "{}:{}".format(thisfullpath, ads)
+            if adsres:
+                for adsr in adsres:
+                    thisfulladspath = "{}:{}".format(thisfullpath, adsr[0])
                     mft.append({
-                        "file_size": file_record.file_size,
+                        "file_size": adsr[1],
                         "full_path": thisfulladspath,
                         "inode": file_record.entry_id,
                         "flags": file_record.flags,
@@ -429,6 +441,19 @@ def mft_parser(mftfile, mftout, drive_letter, file_name, timezone, resident_path
                         "date_flags": mft_entryx10[entry],
                         "ftype": ftypex10
                     })
+            if file_record.entry_id in adsnores:
+                thisfulladspath = "{}:{}".format(thisfullpath, adsnores[file_record.entry_id][0])
+                mft.append({
+                    "file_size": adsnores[file_record.entry_id][1],
+                    "full_path": thisfulladspath,
+                    "inode": file_record.entry_id,
+                    "flags": file_record.flags,
+                    "date": entry,
+                    "date_flags": mft_entryx10[entry],
+                    "ftype": ftypex10
+                })
+                del adsnores[file_record.entry_id]
+
 
         if file_name:
             for entry in mft_entryx30:
@@ -442,6 +467,25 @@ def mft_parser(mftfile, mftout, drive_letter, file_name, timezone, resident_path
                     "ftype": ftypex30
             })
 
+    for adsnr in adsnores:
+        if adsnr in fpath:
+            thisfulladspath = "{}:{}".format(fpath[adsnr][0], adsnores[adsnr][0])
+            #if usnfile:
+            #    if OS == "Windows" and ":\$Extend\$UsnJrnl:$J" in thisfulladspath and int(adsnores[adsnr][1]) > BUFF_SIZE :
+            #        usninode = adsnr
+            #    elif ":/$Extend/$UsnJrnl:$J" in thisfulladspath and int(adsnores[adsnr][1]) > BUFF_SIZE :
+            #        usninode = adsnr
+            mft.append({
+                "file_size": adsnores[adsnr][1],
+                "full_path": thisfulladspath,
+                "inode": adsnr,
+                "flags": "ALLOCATED",
+                "date": fpath[adsnr][2],
+                "date_flags": "....",
+                "ftype": ""
+            })
+
+
     if usnfile:
         skip = False
         check = check_file(usnfile, offset)
@@ -453,26 +497,27 @@ def mft_parser(mftfile, mftout, drive_letter, file_name, timezone, resident_path
                 print ('  + USN Jornal not found. Skipping')
                 skip = True
             else:
-                print("  + DUMPING USN...")
                 usnfile = inode_seek_and_dump(usnfile, dump_path, offset, usninode, "UsnJrnl") 
 
         if not skip:
-        
             journalSize = os.path.getsize(usnfile)
             with open(usnfile, 'rb') as i:
                 i.seek(findFirstRecord(i))
-                for _ in tqdm(generator(), desc = "  + PARSING USN:"):
+                for _ in tqdm(generator(), desc = "  + PARSING USN"):
                     try:
                         nextRecord = findNextRecord(i, journalSize)
                         recordLength = struct.unpack_from('<I', i.read(4))[0]
                         recordData = struct.unpack_from('<2H4Q4I2H', i.read(56))
                         usn = parseUsn(i, recordData)
-                        thisfullpath = fpath.get(usn['mftEntryNumber'], usn['filename'])
+                        if usn['mftEntryNumber'] in fpath:
+                            thisfullpath = fpath[usn['mftEntryNumber']][0]
+                        else:
+                            thisfullpath =  usn['filename']
                         thisfilename = os.path.basename(thisfullpath)
                         if usn['filename'] not in thisfilename:
                             thisfullpath = usn['filename']
                         mft.append({
-                            "file_size": "0",
+                            "file_size": fpath[usn['mftEntryNumber']][1],
                             "full_path": thisfullpath,
                             "inode": usn['mftEntryNumber'],
                             "flags": "(USN: {})".format(usn['reason']),
