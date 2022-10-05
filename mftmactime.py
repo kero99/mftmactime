@@ -42,7 +42,7 @@ from datetime import datetime
 UTC=pytz.UTC
 BUFF_SIZE = 1024 * 1024
 OS=platform.system()
-VERSION="0.6"
+VERSION="0.6.1"
 
 ########################### IMG SUPPORT ################################
 
