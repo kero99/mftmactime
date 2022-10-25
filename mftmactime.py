@@ -282,9 +282,9 @@ def save_mft_to_file(mft, output_path, timezone):
 
             if timezone:
                 thistz = pytz.timezone(timezone) 
-                formatted_date = entry["date"].replace(tzinfo=pytz.utc).astimezone(thistz).strftime("%a %b %d %Y %H:%M:%S")
+                formatted_date = entry["date"].replace(tzinfo=pytz.utc).astimezone(thistz).strftime("%a %b %d %Y %H:%M:%S (%Z)")
             else:
-                formatted_date = entry["date"].strftime("%a %b %d %Y %H:%M:%S")
+                formatted_date = entry["date"].strftime("%a %b %d %Y %H:%M:%S (%Z)")
 
             if "ALLOCATED" in entry["flags"]:
                 fflag = ""
