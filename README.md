@@ -10,7 +10,7 @@ You can use as input files either individual files derived from a triage or a fo
 pip install mft argparse tqdm pytz pytsk3
 
 # Use
-usage: mftmactime.py [-h] -f FILE -o OUTPUT [-m DRIVE] [-n] [-tz TIMEZONE] [-r RESIDENT] [-u USN] [-d DUMP]
+usage: mftmactime [-h] [-V] -f FILE -o OUTPUT [-m DRIVE] [-n] [-tz TIMEZONE] [-r RESIDENT] [-u USN] [-s OFFSET] [-d DUMP_PATH]
                         
 # Example
 mftmactime.py -f /mnt/comp001/\\$MFT -o comp001_fstl.csv -n
