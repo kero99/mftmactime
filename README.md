@@ -1,5 +1,5 @@
 # Description
-This is an MFT and USN parser that allows direct extraction in filesystem timeline format (mactime) and optionally dump all resident files in the MFT in their original folder structure.
+This is an MFT and USN parser that allows direct extraction in filesystem timeline format (mactime), dump all resident files in the MFT in their original folder structure and run yara rules over them all.
 
 It uses Omer BenAmram's (https://github.com/omerbenamram/mft) great MFT rust parsing libraries, which allows a great speed and efficiency in the process.
 The integration with the USN Journal parser allows to have in the same timeline the combined MFT and USN data. 
@@ -7,10 +7,10 @@ The integration with the USN Journal parser allows to have in the same timeline 
 You can use as input files either individual files derived from a triage or a forensic image in RAW format or a mixture of both modes. In case the input is RAW the artifacts will be dumped in a selected directory.
 
 # Requirement
-pip install mft argparse tqdm pytz pytsk3
+pip install mft argparse tqdm pytz pytsk3 yara-python
 
 # Use
-usage: mftmactime [-h] [-V] -f FILE -o OUTPUT [-m DRIVE] [-n] [-tz TIMEZONE] [-r RESIDENT] [-u USN] [-s OFFSET] [-d DUMP_PATH]
+usage: mftmactime [-h] [-V] -f FILE -o OUTPUT [-m DRIVE] [-n] [-tz TIMEZONE] [-r RESIDENT] [-u USN] [-s OFFSET] [-d DUMP_PATH] [-y YARA_RULES] [-yc YARA_COMPILED]
                         
 # Example
 mftmactime.py -f /mnt/comp001/\\$MFT -o comp001_fstl.csv -n
@@ -30,5 +30,10 @@ mftmactime -f MFT -o test.csv -n -r recovery_output
 mftmactime -n -f ../evidence/Testing/test-img.dd -u ../evidence/Testing/test-img.dd -o ./filesystem_tln.csv -d dump -r resindents
 
 ![image](https://user-images.githubusercontent.com/143736/191998130-097e69ea-80dc-4684-80ba-d4dfbe861452.png)
+
+# Example of run yara rules over resident files
+
+![mftmactime-yara](https://user-images.githubusercontent.com/143736/218285321-effe1042-9695-4e88-abe9-de9d30fbaa7f.png)
+
 
 
