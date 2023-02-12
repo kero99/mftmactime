@@ -659,6 +659,7 @@ def main():
     yara_rules_path = args.yara_rules
     yara_compiled_path = args.yara_compiled
 
+    yara_rules = None
     if yara_rules_path and resident_path:
         if path.exists(yara_rules_path):
             try:
