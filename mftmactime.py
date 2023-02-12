@@ -44,7 +44,7 @@ from os import path
 UTC=pytz.UTC
 BUFF_SIZE = 1024 * 1024
 OS=platform.system()
-VERSION="0.8"
+VERSION="0.8.1"
 YARA_VERSION=yara.__version__
 
 ########################### IMG SUPPORT ################################
