@@ -330,6 +330,7 @@ def mft_parser(mftfile, mftout, drive_letter, file_name, timezone, resident_path
         ftypex30 = ""
         resident = False
         asndate = None
+        yara_match = None
         rdeleted = "ALLOCATED"
         mft_entryx10 = dict()
         mft_entryx30 = dict()
