@@ -306,17 +306,22 @@ def dump_resident_file(resident_path, full_path, data):
     except:
         return
 
-def mft_parser(mftfile, mftout, drive_letter, file_name, timezone, resident_path, usnfile, offset, dump_path, yara_rules):
+def mft_parser(mftfile, mftout, drive_letter, file_name, timezone, resident_path, usnfile, offset, dump_path, yara_rules, resident_yara_path):
     mft = list()
     fpath = dict()
     adsres = list()
     adsnores = dict()
     totalres = 0
     totaldel = 0
+    totalyar = 0
     usninode = None
 
-    if resident_path:
-        report_file = "{}/resident_summary.txt".format(resident_path)
+    if resident_path or resident_yara_path:
+        if resident_path:
+            report_file = "{}/resident_summary.txt".format(resident_path)
+        else:
+            report_file = "{}/resident_summary.txt".format(resident_yara_path)
+
         os.makedirs(os.path.dirname(report_file), exist_ok=True)
         with open(report_file, "w") as r:
             r.write("STATUS, FILE PATH\n")
@@ -399,23 +404,28 @@ def mft_parser(mftfile, mftout, drive_letter, file_name, timezone, resident_path
                             mft_entryx30[attribute_data.created] = join_mft_datetime_attributes(mft_entryx30[attribute_data.created], 'b')
                         ftypex30 = attribute_data.flags
 
-                if resident and resident_path:
+                if resident and (resident_path or resident_yara_path or yara_rules):
                     if isinstance(attribute_data, PyMftAttributeX80) and ftypex10:
                         if file_record.file_size != 0:
-                            dump_resident_file(resident_path, file_record.full_path, attribute_data.data)
                             if yara_rules:
                                 yara_match = yara_rules.match(data=attribute_data.data)
                                 if yara_match:
                                     print("\n    - YARA MATCHED: {} RESIDENT FILE: {}".format(yara_match, file_record.full_path))
-                            totalres += 1
-                            if "ALLOCATED" not in file_record.flags:
-                                rdeleted = "DELETED"
-                                totaldel += 1
-                            with open(report_file, "a") as r:
-                                if yara_match:
-                                    r.write("{},{},YARA MATCHED: {}\n".format(rdeleted, file_record.full_path, yara_match))
-                                else:
-                                    r.write("{},{}\n".format(rdeleted, file_record.full_path))
+                                    totalyar +=1
+                            if resident_path or resident_yara_path:
+                                if resident_path:
+                                    dump_resident_file(resident_path, file_record.full_path, attribute_data.data)
+                                elif yara_match and resident_yara_path:
+                                    dump_resident_file(resident_yara_path, file_record.full_path, attribute_data.data)
+                                totalres += 1
+                                if "ALLOCATED" not in file_record.flags:
+                                    rdeleted = "DELETED"
+                                    totaldel += 1
+                                with open(report_file, "a") as r:
+                                    if yara_match:
+                                        r.write("{},{},YARA MATCHED: {}\n".format(rdeleted, file_record.full_path, yara_match))
+                                    else:
+                                        r.write("{},{}\n".format(rdeleted, file_record.full_path))
 
         # Store inode path reference
         if asndate:
@@ -544,6 +554,9 @@ def mft_parser(mftfile, mftout, drive_letter, file_name, timezone, resident_path
     mft_ordered_by_date = sorted(mft, key=itemgetter("date"))
     save_mft_to_file(mft_ordered_by_date, mftout, timezone)
 
+    if yara_rules:
+        print ("  + TOTAL YARA MACHED: {}".format(totalyar))
+
     if resident_path:
         print ("  + TOTAL RESIDENT RECOVERED: {}".format(totalres))
         print ("  + TOTAL DELETED RESIDENT RECOVERED: {}".format(totaldel))
@@ -608,12 +621,18 @@ def get_args():
     argparser.add_argument('-y', '--yara_rules',
                         required=False,
                         action='store',
-                        help='Process yara rules in resident data (require --resident option)')
+                        help='Process yara rules in resident data')
 
     argparser.add_argument('-yc', '--yara_compiled',
                         required=False,
                         action='store',
-                        help='Process compiled yara rules in resident data (require --resident option)')
+                        help='Process compiled yara rules in resident data')
+
+    argparser.add_argument('-ry', '--resident_yara',
+                        required=False,
+                        action='store',
+                        help='Output path for dump only MFT resident files with yara matched '
+                             'rules (not needed if -r is used )')
 
     args = argparser.parse_args()
 
@@ -623,7 +642,6 @@ def get_args():
 def main():
 
     args = get_args()
-
     inputfile = args.file
     offset = int(args.offset)
     dump_path = args.dump_path
@@ -659,20 +677,20 @@ def main():
     resident_path = args.resident
     yara_rules_path = args.yara_rules
     yara_compiled_path = args.yara_compiled
+    resident_yara_path = args.resident_yara
 
     yara_rules = None
-    if yara_rules_path and resident_path:
+    if yara_rules_path:
         if path.exists(yara_rules_path):
             try:
                 yara_rules = yara.compile(yara_rules_path)
             except Exception as e:
                 print('+ Yara error: {}'.format(e))
                 return 1
-
         else:
             print('+ Invalid yara rules path')
             return 1
-    elif yara_compiled_path and resident_path:
+    elif yara_compiled_path:
         if path.exists(yara_compiled_path):
             try:
                 yara_rules = yara.load(yara_compiled_path)
@@ -683,7 +701,8 @@ def main():
             print('+ Invalid yara rules path')
             return 1
 
-    mft_parser(mftfile, mftout, drive_letter, file_name, timezone, resident_path, inputusn, offset, dump_path, yara_rules)
+    mft_parser(mftfile, mftout, drive_letter, file_name, timezone, resident_path, inputusn,
+               offset, dump_path, yara_rules, resident_yara_path)
 
 
 # *** MAIN LOOP ***
