@@ -560,7 +560,7 @@ def mft_parser(mftfile, mftout, drive_letter, file_name, timezone, resident_path
     if yara_rules:
         print ("  + TOTAL YARA MACHED: {}".format(totalyar))
 
-    if resident_path:
+    if resident_path or resident_yara_path:
         print ("  + TOTAL RESIDENT RECOVERED: {}".format(totalres))
         print ("  + TOTAL DELETED RESIDENT RECOVERED: {}".format(totaldel))
         print ("  + RECOVERY REPORT FILE: {}".format(report_file))
