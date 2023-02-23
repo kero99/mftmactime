@@ -413,21 +413,27 @@ def mft_parser(mftfile, mftout, drive_letter, file_name, timezone, resident_path
                                     print("\n    - YARA MATCHED: {} RESIDENT FILE: {}".format(yara_match, file_record.full_path))
                                     totalyar +=1
                             if resident_path or resident_yara_path:
+                                if "ALLOCATED" not in file_record.flags:
+                                    rdeleted = "DELETED"
                                 resident_fullpath = file_record.full_path
                                 if  attribute_record.name and attribute_record.type_name == "DATA": 
                                     resident_fullpath = "{}:{}".format(file_record.full_path, attribute_record.name)
                                 if resident_path:
                                     dump_resident_file(resident_path, resident_fullpath, attribute_data.data)
+                                    totalres += 1
+                                    if rdeleted == "DELETED":
+                                        totaldel += 1
                                 elif yara_match and resident_yara_path:
                                     dump_resident_file(resident_yara_path, resident_fullpath, attribute_data.data)
-                                totalres += 1
-                                if "ALLOCATED" not in file_record.flags:
-                                    rdeleted = "DELETED"
-                                    totaldel += 1
+                                    totalres += 1
+                                    if rdeleted == "DELETED":
+                                        totaldel += 1                              
+                                
+
                                 with open(report_file, "a") as r:
                                     if yara_match:
                                         r.write("{},{},YARA MATCHED: {}\n".format(rdeleted, resident_fullpath, yara_match))
-                                    else:
+                                    elif resident_path:
                                         r.write("{},{}\n".format(rdeleted, resident_fullpath))
 
         # Store inode path reference
