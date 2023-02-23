@@ -44,7 +44,7 @@ from os import path
 UTC=pytz.UTC
 BUFF_SIZE = 1024 * 1024
 OS=platform.system()
-VERSION="0.8.1"
+VERSION="0.9"
 YARA_VERSION=yara.__version__
 
 ########################### IMG SUPPORT ################################
@@ -428,7 +428,6 @@ def mft_parser(mftfile, mftout, drive_letter, file_name, timezone, resident_path
                                     totalres += 1
                                     if rdeleted == "DELETED":
                                         totaldel += 1                              
-                                
 
                                 with open(report_file, "a") as r:
                                     if yara_match:
