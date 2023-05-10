@@ -307,14 +307,22 @@ def dump_resident_file(resident_path, full_path, data):
         return
 
 # Check if datatime is out of range, usually when the timestamp is in milliseconds
-def check_mft_datetime_attribute(timedata):
+def check_mft_datetime_attribute(data, type):
         
         try:
-            timestamp = datetime.fromtimestamp(timedata.timestamp())
+            if type == "modified":
+                timestamp = datetime.fromtimestamp(data.modified.timestamp())
+            elif type == "accessed":
+                timestamp = datetime.fromtimestamp(data.accessed.timestamp())
+            elif type == "mft_modified":
+                timestamp = datetime.fromtimestamp(data.mft_modified.timestamp())
+            elif type == "created":
+                timestamp = datetime.fromtimestamp(data.created.timestamp())
 
         except ValueError:
-            timestamp = datetime.fromtimestamp(timedata.timestamp() / 1000)
-        
+                # HARDCODED DATE FOR ERROR = 1977-01-01 00:00:00 = 220921200
+                timestamp = datetime.fromtimestamp(220921200)
+
         return UTC.localize(timestamp)
 
 
@@ -352,10 +360,10 @@ def mft_parser(mftfile, mftout, drive_letter, file_name, timezone, resident_path
         mft_entryx10 = dict()
         mft_entryx30 = dict()
         adsres.clear()
-        utsm = 1000000000
-        utsa = 1000000000
-        utsc = 1000000000
-        utsb = 1000000000
+        utsm = 220921200
+        utsa = 220921200
+        utsc = 220921200
+        utsb = 220921200
 
         # PATHs Conversions
         if OS == "Windows":
@@ -368,6 +376,12 @@ def mft_parser(mftfile, mftout, drive_letter, file_name, timezone, resident_path
             if isinstance(attribute_record, RuntimeError):
                 continue
 
+            # Discard posible wrong data
+            try:
+                attribute_data = attribute_record.attribute_content
+            except:
+                continue
+
             resident = attribute_record.is_resident
 
             if attribute_record.name and attribute_record.type_name == "DATA" and attribute_record.data_size > 0:
@@ -378,28 +392,28 @@ def mft_parser(mftfile, mftout, drive_letter, file_name, timezone, resident_path
                 else:
                     adsres.append([attribute_record.name, attribute_record.data_size])
 
-            attribute_data = attribute_record.attribute_content
+            
             if attribute_data:
                 if isinstance(attribute_data, PyMftAttributeX10):
-                    utsm = check_mft_datetime_attribute(attribute_data.modified)
+                    utsm = check_mft_datetime_attribute(attribute_data, "modified")
                     if utsm not in mft_entryx10:
                         mft_entryx10[utsm] = "m..."
                     else:
                         mft_entryx10[utsm] = join_mft_datetime_attributes(mft_entryx10[utsm], 'm')
                     
-                    utsa = check_mft_datetime_attribute(attribute_data.accessed)
+                    utsa = check_mft_datetime_attribute(attribute_data, "accessed")
                     if utsa not in mft_entryx10:
                         mft_entryx10[utsa] = ".a.."
                     else:
                         mft_entryx10[utsa] = join_mft_datetime_attributes(mft_entryx10[utsa], 'a')
 
-                    utsc = check_mft_datetime_attribute(attribute_data.mft_modified)
+                    utsc = check_mft_datetime_attribute(attribute_data, "mft_modified")
                     if utsc not in mft_entryx10:
                         mft_entryx10[utsc] = "..c."
                     else:
                         mft_entryx10[utsc] = join_mft_datetime_attributes(mft_entryx10[utsc], 'c')
                     
-                    utsb = check_mft_datetime_attribute(attribute_data.created)
+                    utsb = check_mft_datetime_attribute(attribute_data, "created")
                     if utsb not in mft_entryx10:
                         mft_entryx10[utsb] = "...b"
                     else:
@@ -409,25 +423,25 @@ def mft_parser(mftfile, mftout, drive_letter, file_name, timezone, resident_path
 
                 if file_name:
                     if isinstance(attribute_data, PyMftAttributeX30):
-                        utsm = check_mft_datetime_attribute(attribute_data.modified)
+                        utsm = check_mft_datetime_attribute(attribute_data, "modified")
                         if utsm not in mft_entryx30:
                             mft_entryx30[utsm] = "m..."
                         else:
                             mft_entryx30[utsm] = join_mft_datetime_attributes(mft_entryx30[utsm], 'm')
 
-                        utsa = check_mft_datetime_attribute(attribute_data.accessed)
+                        utsa = check_mft_datetime_attribute(attribute_data, "accessed")
                         if utsa not in mft_entryx30:
                             mft_entryx30[utsa] = ".a.."
                         else:
                             mft_entryx30[utsa] = join_mft_datetime_attributes(mft_entryx30[utsa], 'a')
 
-                        utsc = check_mft_datetime_attribute(attribute_data.mft_modified)
+                        utsc = check_mft_datetime_attribute(attribute_data, "mft_modified")
                         if utsc not in mft_entryx30:
                             mft_entryx30[utsc] = "..c."
                         else:
                             mft_entryx30[utsc] = join_mft_datetime_attributes(mft_entryx30[utsc], 'c')
                         
-                        utsb = check_mft_datetime_attribute(attribute_data.created)
+                        utsb = check_mft_datetime_attribute(attribute_data, "created")
                         if utsb not in mft_entryx30:
                             mft_entryx30[utsb] = "...b"
                         else:
