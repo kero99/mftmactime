@@ -44,7 +44,7 @@ from os import path
 UTC=pytz.UTC
 BUFF_SIZE = 1024 * 1024
 OS=platform.system()
-VERSION="0.9"
+VERSION="0.9.1"
 YARA_VERSION=yara.__version__
 
 ########################### IMG SUPPORT ################################
@@ -306,6 +306,18 @@ def dump_resident_file(resident_path, full_path, data):
     except:
         return
 
+# Check if datatime is out of range, usually when the timestamp is in milliseconds
+def check_mft_datetime_attribute(timedata):
+        
+        try:
+            timestamp = datetime.fromtimestamp(timedata.timestamp())
+
+        except ValueError:
+            timestamp = datetime.fromtimestamp(timedata.timestamp() / 1000)
+        
+        return UTC.localize(timestamp)
+
+
 def mft_parser(mftfile, mftout, drive_letter, file_name, timezone, resident_path, usnfile, offset, dump_path, yara_rules, resident_yara_path):
     mft = list()
     fpath = dict()
@@ -340,6 +352,10 @@ def mft_parser(mftfile, mftout, drive_letter, file_name, timezone, resident_path
         mft_entryx10 = dict()
         mft_entryx30 = dict()
         adsres.clear()
+        utsm = 1000000000
+        utsa = 1000000000
+        utsc = 1000000000
+        utsb = 1000000000
 
         # PATHs Conversions
         if OS == "Windows":
@@ -365,43 +381,57 @@ def mft_parser(mftfile, mftout, drive_letter, file_name, timezone, resident_path
             attribute_data = attribute_record.attribute_content
             if attribute_data:
                 if isinstance(attribute_data, PyMftAttributeX10):
-                    if attribute_data.modified not in mft_entryx10:
-                        mft_entryx10[attribute_data.modified] = "m..."
+                    utsm = check_mft_datetime_attribute(attribute_data.modified)
+                    if utsm not in mft_entryx10:
+                        mft_entryx10[utsm] = "m..."
                     else:
-                        mft_entryx10[attribute_data.modified] = join_mft_datetime_attributes(mft_entryx10[attribute_data.modified], 'm')
-                    if attribute_data.accessed not in mft_entryx10:
-                        mft_entryx10[attribute_data.accessed] = ".a.."
+                        mft_entryx10[utsm] = join_mft_datetime_attributes(mft_entryx10[utsm], 'm')
+                    
+                    utsa = check_mft_datetime_attribute(attribute_data.accessed)
+                    if utsa not in mft_entryx10:
+                        mft_entryx10[utsa] = ".a.."
                     else:
-                        mft_entryx10[attribute_data.accessed] = join_mft_datetime_attributes(mft_entryx10[attribute_data.accessed], 'a')
-                    if attribute_data.mft_modified not in mft_entryx10:
-                        mft_entryx10[attribute_data.mft_modified] = "..c."
+                        mft_entryx10[utsa] = join_mft_datetime_attributes(mft_entryx10[utsa], 'a')
+
+                    utsc = check_mft_datetime_attribute(attribute_data.mft_modified)
+                    if utsc not in mft_entryx10:
+                        mft_entryx10[utsc] = "..c."
                     else:
-                        mft_entryx10[attribute_data.mft_modified] = join_mft_datetime_attributes(mft_entryx10[attribute_data.mft_modified], 'c')
-                    if attribute_data.created not in mft_entryx10:
-                        mft_entryx10[attribute_data.created] = "...b"
+                        mft_entryx10[utsc] = join_mft_datetime_attributes(mft_entryx10[utsc], 'c')
+                    
+                    utsb = check_mft_datetime_attribute(attribute_data.created)
+                    if utsb not in mft_entryx10:
+                        mft_entryx10[utsb] = "...b"
                     else:
-                        mft_entryx10[attribute_data.created] = join_mft_datetime_attributes(mft_entryx10[attribute_data.created], 'b')
+                        mft_entryx10[utsb] = join_mft_datetime_attributes(mft_entryx10[utsb], 'b')
                     ftypex10 = attribute_data.file_flags
-                    asndate = attribute_data.accessed
+                    asndate = utsa
 
                 if file_name:
                     if isinstance(attribute_data, PyMftAttributeX30):
-                        if attribute_data.modified not in mft_entryx30:
-                            mft_entryx30[attribute_data.modified] = "m..."
+                        utsm = check_mft_datetime_attribute(attribute_data.modified)
+                        if utsm not in mft_entryx30:
+                            mft_entryx30[utsm] = "m..."
                         else:
-                            mft_entryx30[attribute_data.modified] = join_mft_datetime_attributes(mft_entryx30[attribute_data.modified], 'm')
-                        if attribute_data.accessed not in mft_entryx30:
-                            mft_entryx30[attribute_data.accessed] = ".a.."
+                            mft_entryx30[utsm] = join_mft_datetime_attributes(mft_entryx30[utsm], 'm')
+
+                        utsa = check_mft_datetime_attribute(attribute_data.accessed)
+                        if utsa not in mft_entryx30:
+                            mft_entryx30[utsa] = ".a.."
                         else:
-                            mft_entryx30[attribute_data.accessed] = join_mft_datetime_attributes(mft_entryx30[attribute_data.accessed], 'a')
-                        if attribute_data.mft_modified not in mft_entryx30:
-                            mft_entryx30[attribute_data.mft_modified] = "..c."
+                            mft_entryx30[utsa] = join_mft_datetime_attributes(mft_entryx30[utsa], 'a')
+
+                        utsc = check_mft_datetime_attribute(attribute_data.mft_modified)
+                        if utsc not in mft_entryx30:
+                            mft_entryx30[utsc] = "..c."
                         else:
-                            mft_entryx30[attribute_data.mft_modified] = join_mft_datetime_attributes(mft_entryx30[attribute_data.mft_modified], 'c')
-                        if attribute_data.created not in mft_entryx30:
-                            mft_entryx30[attribute_data.created] = "...b"
+                            mft_entryx30[utsc] = join_mft_datetime_attributes(mft_entryx30[utsc], 'c')
+                        
+                        utsb = check_mft_datetime_attribute(attribute_data.created)
+                        if utsb not in mft_entryx30:
+                            mft_entryx30[utsb] = "...b"
                         else:
-                            mft_entryx30[attribute_data.created] = join_mft_datetime_attributes(mft_entryx30[attribute_data.created], 'b')
+                            mft_entryx30[utsb] = join_mft_datetime_attributes(mft_entryx30[utsb], 'b')
                         ftypex30 = attribute_data.flags
 
                 if resident and (resident_path or resident_yara_path or yara_rules):
